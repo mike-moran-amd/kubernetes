@@ -37,11 +37,12 @@ type CPUDetails map[int]CPUInfo
 // Socket - socket, cadvisor - Socket
 // NUMA Node - NUMA cell, cadvisor - Node
 type CPUTopology struct {
-	NumCPUs      int
-	NumCores     int
-	NumSockets   int
-	NumNUMANodes int
-	CPUDetails   CPUDetails
+	NumCPUs         int
+	NumCores        int
+	NumSockets      int
+	NumNUMANodes    int
+	CPUDetails      CPUDetails
+	NumUnCoreCaches int
 }
 
 // CPUsPerCore returns the number of logical CPUs are associated with
@@ -64,9 +65,10 @@ func (topo *CPUTopology) CPUsPerSocket() int {
 
 // CPUInfo contains the NUMA, socket, and core IDs associated with a CPU.
 type CPUInfo struct {
-	NUMANodeID int
-	SocketID   int
-	CoreID     int
+	NUMANodeID    int
+	SocketID      int
+	CoreID        int
+	UnCoreCacheID int
 }
 
 // KeepOnly returns a new CPUDetails object with only the supplied cpus.
@@ -273,4 +275,41 @@ func getUniqueCoreID(threads []int) (coreID int, err error) {
 	}
 
 	return min, nil
+}
+
+// UncoreCachesInSocket returns all of the logical uncore cache IDs associated with the
+// given Socket IDs in this CPUDetails.
+func (d CPUDetails) UncoreCachesInSocket(ids ...int) cpuset.CPUSet {
+	b := cpuset.NewBuilder()
+	for _, id := range ids {
+		for _, info := range d {
+			if info.SocketID == id {
+				b.Add(info.UnCoreCacheID)
+			}
+		}
+	}
+	return b.Result()
+}
+
+// CPUsInUncoreCaches returns all of the logical cpu IDs associated with the given
+// uncore cache ID in this CPUDetails.
+func (d CPUDetails) CPUsInUncoreCaches(ids ...int) cpuset.CPUSet {
+	b := cpuset.NewBuilder()
+	for _, id := range ids {
+		for cpu, info := range d {
+			if info.UnCoreCacheID == id {
+				b.Add(cpu)
+			}
+		}
+	}
+	return b.Result()
+}
+
+// CPUsPerUncoreCache returns the average number of logical CPUs are associated with
+// each uncore cache id. Even CPUs share the same llc id may not the same.
+func (topo *CPUTopology) CPUsPerUncoreCache() int {
+	if topo.NumUnCoreCaches == 0 {
+		return 0
+	}
+	return topo.NumCPUs / topo.NumUnCoreCaches
 }

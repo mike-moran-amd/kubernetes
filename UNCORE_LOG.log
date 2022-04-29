@@ -15,8 +15,11 @@
     ./cpu_assignment_test.go:920:17: acc.freeUncoreCaches undefined (type *cpuAccumulator has no field or method freeUncoreCaches)
     Compilation finished with exit code 2
 
+#2204291142
+<<< LINK: https://github.com/kubernetes/kubernetes/compare/master...mike-moran-amd:new_102307?expand=1
 
+<<< NOTE: go_lang auto_reformat_on_save has bad habits
+<<<     e.g. type CPUTopology struct gets reformatted depending on the length of longest variable
 
-<<< TODO: define topoDualUncoreCacheSingleSocketHT
-
-<<< TODO: define acc.freeUncoreCaches
+<<< defined topoDualUncoreCacheSingleSocketHT in policy_test.go
+<<< defined acc.freeUncoreCaches in cpu_assignment.go

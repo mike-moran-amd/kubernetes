@@ -778,3 +778,31 @@ func takeByTopologyNUMADistributed(topo *topology.CPUTopology, availableCPUs cpu
 	// distribute CPUs across, fall back to the packing algorithm.
 	return takeByTopologyNUMAPacked(topo, availableCPUs, numCPUs)
 }
+
+// Returns free uncore cache IDs as a slice sorted by sortAvailableUncoreCaches().
+// Only support when CpuManagerUncoreCacheAlign is enabled.
+func (a *cpuAccumulator) freeUncoreCaches() []int {
+	free := []int{}
+	for _, cache := range a.sortAvailableUncoreCaches() {
+		if a.isUncoreCacheFree(cache) {
+			free = append(free, cache)
+		}
+	}
+	return free
+}
+
+// Sort all sockets with free CPUs using the sort() algorithm defined above.
+func (a *cpuAccumulator) sortAvailableUncoreCaches() []int {
+	var result []int
+	for _, socket := range a.sortAvailableSockets() {
+		caches := a.details.UncoreCachesInSocket(socket).ToSliceNoSort()
+		a.sort(caches, a.details.CPUsInUncoreCaches)
+		result = append(result, caches...)
+	}
+	return result
+}
+
+// Returns true if the supplied core is fully available in `topoDetails`.
+func (a *cpuAccumulator) isUncoreCacheFree(uncoreCacheID int) bool {
+	return a.details.CPUsInUncoreCaches(uncoreCacheID).Size() == a.topo.CPUsPerUncoreCache()
+}

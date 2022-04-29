@@ -892,4 +892,28 @@ var (
 			255: {CoreID: 127, SocketID: 1, NUMANodeID: 7},
 		},
 	}
+	topoDualUncoreCacheSingleSocketHT = &topology.CPUTopology{
+		NumCPUs:         16,
+		NumSockets:      1,
+		NumCores:        8,
+		NumUnCoreCaches: 2,
+		CPUDetails: map[int]topology.CPUInfo{
+			0:  {CoreID: 0, SocketID: 0, UnCoreCacheID: 0},
+			1:  {CoreID: 0, SocketID: 0, UnCoreCacheID: 0},
+			2:  {CoreID: 1, SocketID: 0, UnCoreCacheID: 0},
+			3:  {CoreID: 1, SocketID: 0, UnCoreCacheID: 0},
+			4:  {CoreID: 2, SocketID: 0, UnCoreCacheID: 0},
+			5:  {CoreID: 2, SocketID: 0, UnCoreCacheID: 0},
+			6:  {CoreID: 3, SocketID: 0, UnCoreCacheID: 0},
+			7:  {CoreID: 3, SocketID: 0, UnCoreCacheID: 0},
+			8:  {CoreID: 4, SocketID: 0, UnCoreCacheID: 1},
+			9:  {CoreID: 4, SocketID: 0, UnCoreCacheID: 1},
+			10: {CoreID: 5, SocketID: 0, UnCoreCacheID: 1},
+			11: {CoreID: 5, SocketID: 0, UnCoreCacheID: 1},
+			12: {CoreID: 6, SocketID: 0, UnCoreCacheID: 1},
+			13: {CoreID: 6, SocketID: 0, UnCoreCacheID: 1},
+			14: {CoreID: 7, SocketID: 0, UnCoreCacheID: 1},
+			15: {CoreID: 7, SocketID: 0, UnCoreCacheID: 1},
+		},
+	}
 )
