@@ -882,3 +882,44 @@ func mustParseCPUSet(t *testing.T, s string) cpuset.CPUSet {
 	}
 	return cpus
 }
+
+func TestCPUAccumulatorFreeUncoreCache(t *testing.T) {
+	testCases := []struct {
+		description   string
+		topo          *topology.CPUTopology
+		availableCPUs cpuset.CPUSet
+		expect        []int
+	}{
+		{
+			"dual UncoreCache groups, 1 uncore cache free, cache id and cpu numbers (0:7, 1:8)",
+			topoDualUncoreCacheSingleSocketHT,
+			cpuset.NewCPUSet(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15),
+			[]int{1},
+		},
+		{
+			"dual UncoreCache groups, 2 uncore cache free, cache id and cpu numbers (0:8, 1:8)",
+			topoDualUncoreCacheSingleSocketHT,
+			cpuset.NewCPUSet(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15),
+			[]int{0, 1},
+		},
+		{
+			"dual UncoreCache groups, 1 uncore cache free, cache id and cpu numbers (0:8, 1:7)",
+			topoDualUncoreCacheSingleSocketHT,
+			cpuset.NewCPUSet(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14),
+			[]int{0},
+		},
+		{
+			"dual UncoreCache groups, 0 uncore cache free, cache id and cpu numbers (0:7, 1:7)",
+			topoDualUncoreCacheSingleSocketHT,
+			cpuset.NewCPUSet(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14),
+			[]int{},
+		},
+	}
+	for _, tc := range testCases {
+		acc := newCPUAccumulator(tc.topo, tc.availableCPUs, 0)
+		result := acc.freeUncoreCaches()
+		if !reflect.DeepEqual(result, tc.expect) {
+			t.Errorf("[%s] expected %v to equal %v", tc.description, result, tc.expect)
+		}
+	}
+}

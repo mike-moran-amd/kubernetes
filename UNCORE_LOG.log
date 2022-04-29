@@ -1,0 +1,22 @@
+#2204282158
+<<< THIS WAS THE FIRST UNIT TEST FAILURE AFTER ADDING THE LAST TEST CASE FROM cpu_assignment_test.go
+<<< IT SHOWS
+<<<     4  undefined topoDualUncoreCacheSingleSocketHT
+<<<     1  undefined acc.freeUncoreCaches
+
+    GOROOT=/usr/local/go #gosetup
+    GOPATH=/Users/mfm/go #gosetup
+    /usr/local/go/bin/go test -c -o /private/var/folders/_5/m8nc7v1n1wj8nvjky378_bth0000gn/T/GoLand/___TestCPUAccumulatorFreeUncoreCache_in_k8s_io_kubernetes_pkg_kubelet_cm_cpumanager.test -gcflags all=-N -l k8s.io/kubernetes/pkg/kubelet/cm/cpumanager #gosetup
+    # k8s.io/kubernetes/pkg/kubelet/cm/cpumanager [k8s.io/kubernetes/pkg/kubelet/cm/cpumanager.test]
+    ./cpu_assignment_test.go:895:4: undefined: topoDualUncoreCacheSingleSocketHT
+    ./cpu_assignment_test.go:901:4: undefined: topoDualUncoreCacheSingleSocketHT
+    ./cpu_assignment_test.go:907:4: undefined: topoDualUncoreCacheSingleSocketHT
+    ./cpu_assignment_test.go:913:4: undefined: topoDualUncoreCacheSingleSocketHT
+    ./cpu_assignment_test.go:920:17: acc.freeUncoreCaches undefined (type *cpuAccumulator has no field or method freeUncoreCaches)
+    Compilation finished with exit code 2
+
+
+
+<<< TODO: define topoDualUncoreCacheSingleSocketHT
+
+<<< TODO: define acc.freeUncoreCaches
