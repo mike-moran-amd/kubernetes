@@ -883,6 +883,8 @@ func mustParseCPUSet(t *testing.T, s string) cpuset.CPUSet {
 	return cpus
 }
 
+// FIXME this is the beginning of the previous PR102307 transcription, some editing has been done as commented.
+// This will be removed when this new PR is ready to push so any particles from future merges should be placed above
 func TestCPUAccumulatorFreeUncoreCache(t *testing.T) {
 	testCases := []struct {
 		description   string
@@ -916,10 +918,13 @@ func TestCPUAccumulatorFreeUncoreCache(t *testing.T) {
 		},
 	}
 	for _, tc := range testCases {
-		acc := newCPUAccumulator(tc.topo, tc.availableCPUs, 0)
-		result := acc.freeUncoreCaches()
-		if !reflect.DeepEqual(result, tc.expect) {
-			t.Errorf("[%s] expected %v to equal %v", tc.description, result, tc.expect)
-		}
+		// Apply t.Run() test pattern
+		t.Run(tc.description, func(t *testing.T) {
+			acc := newCPUAccumulator(tc.topo, tc.availableCPUs, 0)
+			result := acc.freeUncoreCaches()
+			if !reflect.DeepEqual(result, tc.expect) {
+				t.Errorf("[%s] expected %v to equal %v", tc.description, result, tc.expect)
+			}
+		})
 	}
 }
