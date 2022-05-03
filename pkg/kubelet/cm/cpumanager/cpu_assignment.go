@@ -18,6 +18,8 @@ package cpumanager
 
 import (
 	"fmt"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
+	kubefeatures "k8s.io/kubernetes/pkg/features"
 	"math"
 	"sort"
 
@@ -312,7 +314,27 @@ func (a *cpuAccumulator) sortAvailableSockets() []int {
 
 // Sort all cores with free CPUs:
 func (a *cpuAccumulator) sortAvailableCores() []int {
-	return a.numaOrSocketsFirst.sortAvailableCores()
+
+	// FIXME NEW STUFF
+	var result []int
+	if a.isUncoreCacheAlignEnabled() {
+		for _, cache := range a.sortAvailableUncoreCaches() {
+			cores := a.details.CoresInUncoreCaches(cache).ToSliceNoSort()
+			a.sort(cores, a.details.CPUsInCores)
+			result = append(result, cores...)
+		}
+	} else {
+		for _, socket := range a.sortAvailableSockets() {
+			cores := a.details.CoresInSockets(socket).ToSliceNoSort()
+			a.sort(cores, a.details.CPUsInCores)
+			result = append(result, cores...)
+		}
+	}
+	// FIXME I RECCOMMEND REPLACING ELSE ABOVE WITH OLD STUFF BELOW (ARE THEY THE SAME?)
+
+	return result
+	// FIXME OLD STUFF WAS
+	// return a.numaOrSocketsFirst.sortAvailableCores()
 }
 
 // Sort all available CPUs:
@@ -779,6 +801,9 @@ func takeByTopologyNUMADistributed(topo *topology.CPUTopology, availableCPUs cpu
 	return takeByTopologyNUMAPacked(topo, availableCPUs, numCPUs)
 }
 
+// FIXME this is the beginning of the previous PR102307 transcription, some editing has been done as commented.
+// This will be removed when this new PR is ready to push so any particles from future merges should be placed above
+
 // Returns free uncore cache IDs as a slice sorted by sortAvailableUncoreCaches().
 // Only support when CpuManagerUncoreCacheAlign is enabled.
 func (a *cpuAccumulator) freeUncoreCaches() []int {
@@ -805,4 +830,73 @@ func (a *cpuAccumulator) sortAvailableUncoreCaches() []int {
 // Returns true if the supplied core is fully available in `topoDetails`.
 func (a *cpuAccumulator) isUncoreCacheFree(uncoreCacheID int) bool {
 	return a.details.CPUsInUncoreCaches(uncoreCacheID).Size() == a.topo.CPUsPerUncoreCache()
+}
+
+func takeByTopology(topo *topology.CPUTopology, availableCPUs cpuset.CPUSet, numCPUs int) (cpuset.CPUSet, error) {
+	acc := newCPUAccumulator(topo, availableCPUs, numCPUs)
+	if acc.isSatisfied() {
+		return acc.result, nil
+	}
+	if acc.isFailed() {
+		return cpuset.NewCPUSet(), fmt.Errorf("not enough cpus available to satisfy request")
+	}
+
+	// Algorithm: topology-aware best-fit
+	// 1. Acquire whole sockets, if available and the container requires at
+	//    least a socket's-worth of CPUs.
+	acc.takeFullSockets()
+	if acc.isSatisfied() {
+		return acc.result, nil
+	}
+
+	// 2. Acquire whole uncore cache, if available and the container requires at least
+	//    a uncore-cache's-worth of CPUs.
+	//    Only support when CpuManagerUncoreCacheAlign is enabled.
+	if acc.isUncoreCacheAlignEnabled() {
+		acc.takeFullUncoreCaches()
+		if acc.isSatisfied() {
+			return acc.result, nil
+		}
+	}
+
+	// 3. Acquire whole cores, if available and the container requires at least
+	//    a core's-worth of CPUs.
+	acc.takeFullCores()
+	if acc.isSatisfied() {
+		return acc.result, nil
+	}
+
+	// 4. Acquire single threads, preferring to fill partially-allocated cores
+	//    on the same sockets as the whole cores we have already taken in this
+	//    allocation.
+	acc.takeRemainingCPUs()
+	if acc.isSatisfied() {
+		return acc.result, nil
+	}
+
+	return cpuset.NewCPUSet(), fmt.Errorf("failed to allocate cpus")
+}
+
+func (a *cpuAccumulator) isUncoreCacheAlignEnabled() bool {
+	// FIXME SHOULD BE???
+	if utilfeature.DefaultFeatureGate.Enabled(kubefeatures.CPUManagerUncoreCacheAlign) {
+		return true
+	}
+	// FIXME BUT WAS???
+	sauc := a.sortAvailableUncoreCaches()
+	l := len(sauc)
+	return utilfeature.DefaultFeatureGate.Enabled(kubefeatures.CPUManagerUncoreCacheAlign) &&
+		(l != 0 && sauc[0] != sauc[l-1])
+	// TODO WHAT IS THIS ABOVE (RANDOM)???
+}
+
+func (a *cpuAccumulator) takeFullUncoreCaches() {
+	for _, uncorecache := range a.freeUncoreCaches() {
+		cpusInUncoreCache := a.topo.CPUDetails.CPUsInUncoreCaches(uncorecache)
+		if !a.needs(cpusInUncoreCache.Size()) {
+			continue
+		}
+		klog.V(4).InfoS("takeFullUncoreCaches: claiming uncore-cache", "uncore-cache", uncorecache)
+		a.take(cpusInUncoreCache)
+	}
 }

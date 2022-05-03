@@ -18,9 +18,9 @@ package topology
 
 import (
 	"fmt"
-
 	cadvisorapi "github.com/google/cadvisor/info/v1"
 	"k8s.io/klog/v2"
+
 	"k8s.io/kubernetes/pkg/kubelet/cm/cpuset"
 )
 
@@ -227,18 +227,26 @@ func Discover(machineInfo *cadvisorapi.MachineInfo) (*CPUTopology, error) {
 
 	CPUDetails := CPUDetails{}
 	numPhysicalCores := 0
+	uncoreCacheIDs := make(map[int]int)
 
 	for _, node := range machineInfo.Topology {
 		numPhysicalCores += len(node.Cores)
 		for _, core := range node.Cores {
 			if coreID, err := getUniqueCoreID(core.Threads); err == nil {
+				unCoreCacheID := getCacheID(core.UncoreCaches, cacheLevel3)
 				for _, cpu := range core.Threads {
 					CPUDetails[cpu] = CPUInfo{
 						CoreID:     coreID,
 						SocketID:   core.SocketID,
 						NUMANodeID: node.Id,
+						// UnCoreCacheID could be invalidCacheID(-1), mean no uncore cache.
+						UnCoreCacheID: unCoreCacheID,
 					}
 				}
+				if unCoreCacheID == invalidCacheID {
+					continue
+				}
+				uncoreCacheIDs[unCoreCacheID] = 1
 			} else {
 				klog.ErrorS(nil, "Could not get unique coreID for socket", "socket", core.SocketID, "core", core.Id, "threads", core.Threads)
 				return nil, err
@@ -247,11 +255,11 @@ func Discover(machineInfo *cadvisorapi.MachineInfo) (*CPUTopology, error) {
 	}
 
 	return &CPUTopology{
-		NumCPUs:      machineInfo.NumCores,
-		NumSockets:   machineInfo.NumSockets,
-		NumCores:     numPhysicalCores,
-		NumNUMANodes: CPUDetails.NUMANodes().Size(),
-		CPUDetails:   CPUDetails,
+		NumCPUs:         machineInfo.NumCores,
+		NumSockets:      machineInfo.NumSockets,
+		NumCores:        numPhysicalCores,
+		NumUnCoreCaches: len(uncoreCacheIDs),
+		CPUDetails:      CPUDetails,
 	}, nil
 }
 
@@ -276,6 +284,9 @@ func getUniqueCoreID(threads []int) (coreID int, err error) {
 
 	return min, nil
 }
+
+// FIXME this is the beginning of the previous PR102307 transcription, some editing has been done as commented.
+// This will be removed when this new PR is ready to push so any particles from future merges should be placed above
 
 // UncoreCachesInSocket returns all of the logical uncore cache IDs associated with the
 // given Socket IDs in this CPUDetails.
@@ -312,4 +323,49 @@ func (topo *CPUTopology) CPUsPerUncoreCache() int {
 		return 0
 	}
 	return topo.NumCPUs / topo.NumUnCoreCaches
+}
+
+// FIXME COMMENT BY jfbai: In some special cases, it may give wrong answer. In VM for example, host machine may reserve cores to for virtualization and these cores are reserved evenly on multiple chips, in these case, kubelet in VM gets all the caches same as the host machine, but the threads are less than host machine, then CPUsPerUncoreCache will be wrong.
+// FIXME REPLY BY ranchothu: thanks, good question, the key is not evenly allocate of physical cpu to vcpu. this depend too much on the virtualization implementation of cloud vendors, and in some caces(like yours) the problem occurs.
+// FIXME     Although in our cloud the problem is not exists, but, i will take it to consideration and make a change, to make the algorithm more common.
+
+// CoresInUncoreCaches returns all of the logical core IDs associated with the given
+// uncore cache ID in this CPUDetails.
+func (d CPUDetails) CoresInUncoreCaches(ids ...int) cpuset.CPUSet {
+	b := cpuset.NewBuilder()
+	for _, id := range ids {
+		for _, info := range d {
+			if info.UnCoreCacheID == id {
+				b.Add(info.CoreID)
+			}
+		}
+	}
+	return b.Result()
+}
+
+const (
+	cacheLevel3    = 3
+	invalidCacheID = -1
+)
+
+// UncoreCaches returns all of the uncore cache IDs associated with the CPUs in this
+// CPUDetails.
+func (d CPUDetails) UncoreCaches() cpuset.CPUSet {
+	b := cpuset.NewBuilder()
+	for _, info := range d {
+		if info.UnCoreCacheID != invalidCacheID {
+			b.Add(info.UnCoreCacheID)
+		}
+	}
+	return b.Result()
+}
+
+// get specific level cache
+func getCacheID(caches []cadvisorapi.Cache, level int) int {
+	for _, cn := range caches {
+		if cn.Level == level {
+			return cn.Id
+		}
+	}
+	return invalidCacheID
 }

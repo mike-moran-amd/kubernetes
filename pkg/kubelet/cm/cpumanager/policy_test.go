@@ -892,6 +892,7 @@ var (
 			255: {CoreID: 127, SocketID: 1, NUMANodeID: 7},
 		},
 	}
+	// FIXME THIS IS DIFFERENT EVERYWHERE
 	topoDualUncoreCacheSingleSocketHT = &topology.CPUTopology{
 		NumCPUs:         16,
 		NumSockets:      1,
