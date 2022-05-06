@@ -258,6 +258,7 @@ func Discover(machineInfo *cadvisorapi.MachineInfo) (*CPUTopology, error) {
 		NumCPUs:         machineInfo.NumCores,
 		NumSockets:      machineInfo.NumSockets,
 		NumCores:        numPhysicalCores,
+		NumNUMANodes:    CPUDetails.NUMANodes().Size(),
 		NumUnCoreCaches: len(uncoreCacheIDs),
 		CPUDetails:      CPUDetails,
 	}, nil
