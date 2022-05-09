@@ -803,6 +803,12 @@ const (
 	//
 	// Enables support for 'HostProcess' containers on Windows nodes.
 	WindowsHostProcessContainers featuregate.Feature = "WindowsHostProcessContainers"
+
+	// owner: @mike-moran-amd
+	// alpha: v1.23
+	//
+	// Add uncore cache affinity to cpu manager
+	CPUManagerUncoreCacheAlign featuregate.Feature = "CPUManagerUncoreCacheAlign"
 )
 
 func init() {
@@ -1029,6 +1035,8 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 	WinOverlay: {Default: true, PreRelease: featuregate.Beta},
 
 	WindowsHostProcessContainers: {Default: true, PreRelease: featuregate.Beta},
+
+	CPUManagerUncoreCacheAlign: {Default: false, PreRelease: featuregate.Alpha},
 
 	// inherited features from generic apiserver, relisted here to get a conflict if it is changed
 	// unintentionally on either side:

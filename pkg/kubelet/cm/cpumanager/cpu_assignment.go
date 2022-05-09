@@ -25,6 +25,9 @@ import (
 
 	"k8s.io/kubernetes/pkg/kubelet/cm/cpumanager/topology"
 	"k8s.io/kubernetes/pkg/kubelet/cm/cpuset"
+
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
+	kubefeatures "k8s.io/kubernetes/pkg/features"
 )
 
 type LoopControl int
@@ -238,7 +241,11 @@ func (a *cpuAccumulator) isSocketFree(socketID int) bool {
 
 // Returns true if the supplied core is fully available in `topoDetails`.
 func (a *cpuAccumulator) isCoreFree(coreID int) bool {
-	return a.details.CPUsInCores(coreID).Size() == a.topo.CPUsPerCore()
+	// FIXME
+	x := a.details.CPUsInCores(coreID).Size()
+	y := a.topo.CPUsPerCore()
+	return x == y
+	// FIXME return a.details.CPUsInCores(coreID).Size() == a.topo.CPUsPerCore()
 }
 
 // Returns free NUMA Node IDs as a slice sorted by sortAvailableNUMANodes().
@@ -312,6 +319,15 @@ func (a *cpuAccumulator) sortAvailableSockets() []int {
 
 // Sort all cores with free CPUs:
 func (a *cpuAccumulator) sortAvailableCores() []int {
+	if a.isUncoreCacheAlignEnabled() {
+		var result []int
+		for _, cache := range a.sortAvailableUncoreCaches() {
+			cores := a.details.CoresInUncoreCaches(cache).ToSliceNoSort()
+			a.sort(cores, a.details.CPUsInCores)
+			result = append(result, cores...)
+		}
+		return result
+	}
 	return a.numaOrSocketsFirst.sortAvailableCores()
 }
 
@@ -468,14 +484,24 @@ func takeByTopologyNUMAPacked(topo *topology.CPUTopology, availableCPUs cpuset.C
 		return acc.result, nil
 	}
 
-	// 2. Acquire whole cores, if available and the container requires at least
+	// 2. Acquire whole uncore cache, if available and the container requires at least
+	//    a uncore-cache's-worth of CPUs.
+	//    Only support when CpuManagerUncoreCacheAlign is enabled.
+	if acc.isUncoreCacheAlignEnabled() {
+		acc.takeFullUncoreCaches()
+		if acc.isSatisfied() {
+			return acc.result, nil
+		}
+	}
+
+	// 3. Acquire whole cores, if available and the container requires at least
 	//    a core's-worth of CPUs.
 	acc.takeFullCores()
 	if acc.isSatisfied() {
 		return acc.result, nil
 	}
 
-	// 3. Acquire single threads, preferring to fill partially-allocated cores
+	// 4. Acquire single threads, preferring to fill partially-allocated cores
 	//    on the same sockets as the whole cores we have already taken in this
 	//    allocation.
 	acc.takeRemainingCPUs()
@@ -777,4 +803,58 @@ func takeByTopologyNUMADistributed(topo *topology.CPUTopology, availableCPUs cpu
 	// If we never found a combination of NUMA nodes that we could properly
 	// distribute CPUs across, fall back to the packing algorithm.
 	return takeByTopologyNUMAPacked(topo, availableCPUs, numCPUs)
+}
+
+// FOR 102307
+
+// Returns true if the supplied core is fully available in `topoDetails`.
+func (a *cpuAccumulator) isUncoreCacheFree(uncoreCacheID int) bool {
+	return a.details.CPUsInUncoreCaches(uncoreCacheID).Size() == a.topo.CPUsPerUncoreCache()
+}
+
+// Returns free uncore cache IDs as a slice sorted by sortAvailableUncoreCaches().
+// Only support when CpuManagerUncoreCacheAlign is enabled.
+func (a *cpuAccumulator) freeUncoreCaches() []int {
+	free := []int{}
+	for _, cache := range a.sortAvailableUncoreCaches() {
+		if a.isUncoreCacheFree(cache) {
+			free = append(free, cache)
+		}
+	}
+	return free
+}
+
+// Sort all sockets with free CPUs using the sort() algorithm defined above.
+func (a *cpuAccumulator) sortAvailableUncoreCaches() []int {
+	var result []int
+	for _, socket := range a.sortAvailableSockets() {
+		caches := a.details.UncoreCachesInSocket(socket).ToSliceNoSort()
+		a.sort(caches, a.details.CPUsInUncoreCaches)
+		result = append(result, caches...)
+	}
+	return result
+}
+
+func (a *cpuAccumulator) takeFullUncoreCaches() {
+	for _, uncorecache := range a.freeUncoreCaches() {
+		cpusInUncoreCache := a.topo.CPUDetails.CPUsInUncoreCaches(uncorecache)
+		if !a.needs(cpusInUncoreCache.Size()) {
+			continue
+		}
+		klog.V(4).InfoS("takeFullUncoreCaches: claiming uncore-cache", "uncore-cache", uncorecache)
+		a.take(cpusInUncoreCache)
+	}
+}
+
+func (a *cpuAccumulator) isUncoreCacheAlignEnabled() bool {
+	// FIXME SHOULD BE???
+	if utilfeature.DefaultFeatureGate.Enabled(kubefeatures.CPUManagerUncoreCacheAlign) {
+		return true
+	}
+	// FIXME BUT WAS???
+	sauc := a.sortAvailableUncoreCaches()
+	l := len(sauc)
+	return utilfeature.DefaultFeatureGate.Enabled(kubefeatures.CPUManagerUncoreCacheAlign) &&
+		(l != 0 && sauc[0] != sauc[l-1])
+	// TODO WHAT IS THIS ABOVE (RANDOM)???
 }

@@ -17,6 +17,9 @@ limitations under the License.
 package cpumanager
 
 import (
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
+	featuregatetesting "k8s.io/component-base/featuregate/testing"
+	"k8s.io/kubernetes/pkg/features"
 	"reflect"
 	"sort"
 	"testing"
@@ -326,6 +329,12 @@ func TestCPUAccumulatorFreeCores(t *testing.T) {
 			[]int{2, 4, 1, 3, 5},
 		},
 		{
+			"dual socket HT, 5 cores free (1 consumed from socket 1)",
+			topoDualSocketHT,
+			cpuset.NewCPUSet(0, 1, 2, 3, 4, 6, 7, 8, 9, 10),
+			[]int{1, 3, 0, 2, 4},
+		},
+		{
 			"dual socket HT, 4 cores free (1 consumed from each socket)",
 			topoDualSocketHT,
 			cpuset.NewCPUSet(2, 3, 4, 5, 8, 9, 10, 11),
@@ -447,7 +456,7 @@ func TestCPUAccumulatorTake(t *testing.T) {
 			false,
 		},
 		{
-			"take 2 cpu from a single socket HT, require 4, expect failed",
+			"take 2 cpu from a single socket HT, require 4, expectFreeSockets failed",
 			topoSingleSocketHT,
 			cpuset.NewCPUSet(0, 1, 2),
 			[]cpuset.CPUSet{cpuset.NewCPUSet(0), cpuset.NewCPUSet(1)},
@@ -881,4 +890,304 @@ func mustParseCPUSet(t *testing.T, s string) cpuset.CPUSet {
 		t.Errorf("parsing %q: %v", s, err)
 	}
 	return cpus
+}
+
+func TestCPUAccumulatorFreeCoresUncoreCacheEnabled(t *testing.T) {
+	testCases := []struct {
+		description   string
+		topo          *topology.CPUTopology
+		availableCPUs cpuset.CPUSet
+		expect        []int
+	}{
+		{
+			"single socket HT, 4 cores free",
+			topoSingleSocketHT,
+			cpuset.NewCPUSet(0, 1, 2, 3, 4, 5, 6, 7),
+			[]int{0, 1, 2, 3},
+		},
+		{
+			"single socket HT, 3 cores free",
+			topoSingleSocketHT,
+			cpuset.NewCPUSet(0, 1, 2, 4, 5, 6),
+			[]int{0, 1, 2},
+		},
+		{
+			"single socket HT, 3 cores free (1 partially consumed)",
+			topoSingleSocketHT,
+			cpuset.NewCPUSet(0, 1, 2, 3, 4, 5, 6),
+			[]int{0, 1, 2},
+		},
+		{
+			"single socket HT, 0 cores free",
+			topoSingleSocketHT,
+			cpuset.NewCPUSet(),
+			[]int{},
+		},
+		{
+			"single socket HT, 0 cores free (4 partially consumed)",
+			topoSingleSocketHT,
+			cpuset.NewCPUSet(0, 1, 2, 3),
+			[]int{},
+		},
+		{
+			"dual socket HT, 6 cores free",
+			topoDualSocketHT,
+			cpuset.NewCPUSet(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11),
+			[]int{0, 2, 4, 1, 3, 5},
+		},
+		{
+			"dual socket HT, 5 cores free (1 consumed from socket 0)",
+			topoDualSocketHT,
+			cpuset.NewCPUSet(2, 1, 3, 4, 5, 7, 8, 9, 10, 11),
+			[]int{2, 4, 1, 3, 5},
+		},
+		{
+			"dual socket HT, 5 cores free (1 consumed from socket 1)",
+			topoDualSocketHT,
+			cpuset.NewCPUSet(0, 1, 2, 3, 4, 6, 7, 8, 9, 10),
+			[]int{1, 3, 0, 2, 4},
+		},
+		{
+			"dual socket HT, 4 cores free (1 consumed from each socket)",
+			topoDualSocketHT,
+			cpuset.NewCPUSet(2, 3, 4, 5, 8, 9, 10, 11),
+			[]int{2, 4, 3, 5},
+		},
+	}
+	defer featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.CPUManagerUncoreCacheAlign, true)()
+	for _, tc := range testCases {
+		t.Run(tc.description, func(t *testing.T) {
+			acc := newCPUAccumulator(tc.topo, tc.availableCPUs, 0)
+			result := acc.freeCores()
+			if !reflect.DeepEqual(result, tc.expect) {
+				t.Errorf("[%s] expected %v to equal %v", tc.description, result, tc.expect)
+			}
+		})
+	}
+}
+
+func TestCPUAccumulatorFreeCPUsUncoreCacheEnabled(t *testing.T) {
+	testCases := []struct {
+		description   string
+		topo          *topology.CPUTopology
+		availableCPUs cpuset.CPUSet
+		expect        []int
+	}{
+		{
+			"single socket HT, 8 cpus free",
+			topoSingleSocketHT,
+			cpuset.NewCPUSet(0, 1, 2, 3, 4, 5, 6, 7),
+			[]int{0, 4, 1, 5, 2, 6, 3, 7},
+		},
+		{
+			"single socket HT, 5 cpus free",
+			topoSingleSocketHT,
+			cpuset.NewCPUSet(3, 4, 5, 6, 7),
+			[]int{4, 5, 6, 3, 7},
+		},
+		{
+			"dual socket HT, 12 cpus free",
+			topoDualSocketHT,
+			cpuset.NewCPUSet(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11),
+			[]int{0, 6, 2, 8, 4, 10, 1, 7, 3, 9, 5, 11},
+		},
+		{
+			"dual socket HT, 11 cpus free",
+			topoDualSocketHT,
+			cpuset.NewCPUSet(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11),
+			[]int{6, 2, 8, 4, 10, 1, 7, 3, 9, 5, 11},
+		},
+		{
+			"dual socket HT, 10 cpus free",
+			topoDualSocketHT,
+			cpuset.NewCPUSet(1, 2, 3, 4, 5, 7, 8, 9, 10, 11),
+			[]int{2, 8, 4, 10, 1, 7, 3, 9, 5, 11},
+		},
+		{
+			"dual socket HT, 10 cpus free",
+			topoDualSocketHT,
+			cpuset.NewCPUSet(0, 1, 2, 3, 4, 6, 7, 8, 9, 10),
+			[]int{1, 7, 3, 9, 0, 6, 2, 8, 4, 10},
+		},
+	}
+	defer featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.CPUManagerUncoreCacheAlign, true)()
+	for _, tc := range testCases {
+		t.Run(tc.description, func(t *testing.T) {
+			acc := newCPUAccumulator(tc.topo, tc.availableCPUs, 0)
+			result := acc.freeCores()
+			if !reflect.DeepEqual(result, tc.expect) {
+				t.Errorf("[%s] expected %v to equal %v", tc.description, result, tc.expect)
+			}
+		})
+	}
+}
+
+func TestTakeByTopologyUncoreCacheEnabled(t *testing.T) {
+	testCases := []struct {
+		description   string
+		topo          *topology.CPUTopology
+		availableCPUs cpuset.CPUSet
+		numCPUs       int
+		expErr        string
+		expResult     cpuset.CPUSet
+	}{
+		{
+			"take more cpus than are available from single socket with HT",
+			topoSingleSocketHT,
+			cpuset.NewCPUSet(0, 2, 4, 6),
+			5,
+			"not enough cpus available to satisfy request",
+			cpuset.NewCPUSet(),
+		},
+		{
+			"take zero cpus from single socket with HT",
+			topoSingleSocketHT,
+			cpuset.NewCPUSet(0, 1, 2, 3, 4, 5, 6, 7),
+			0,
+			"",
+			cpuset.NewCPUSet(),
+		},
+		{
+			"take one cpu from single socket with HT",
+			topoSingleSocketHT,
+			cpuset.NewCPUSet(0, 1, 2, 3, 4, 5, 6, 7),
+			1,
+			"",
+			cpuset.NewCPUSet(0),
+		},
+		{
+			"take one cpu from single socket with HT, some cpus are taken",
+			topoSingleSocketHT,
+			cpuset.NewCPUSet(1, 3, 5, 6, 7),
+			1,
+			"",
+			cpuset.NewCPUSet(6),
+		},
+		{
+			"take two cpus from single socket with HT",
+			topoSingleSocketHT,
+			cpuset.NewCPUSet(0, 1, 2, 3, 4, 5, 6, 7),
+			2,
+			"",
+			cpuset.NewCPUSet(0, 4),
+		},
+		{
+			"take all cpus from single socket with HT",
+			topoSingleSocketHT,
+			cpuset.NewCPUSet(0, 1, 2, 3, 4, 5, 6, 7),
+			8,
+			"",
+			cpuset.NewCPUSet(0, 1, 2, 3, 4, 5, 6, 7),
+		},
+		{
+			"take two cpus from single socket with HT, only one core totally free",
+			topoSingleSocketHT,
+			cpuset.NewCPUSet(0, 1, 2, 3, 6),
+			2,
+			"",
+			cpuset.NewCPUSet(2, 6),
+		},
+		{
+			"take one cpu from dual socket with HT - core from Socket 0",
+			topoDualSocketHT,
+			cpuset.NewCPUSet(1, 2, 3, 4, 5, 7, 8, 9, 10, 11),
+			1,
+			"",
+			cpuset.NewCPUSet(2),
+		},
+		{
+			"take a socket of cpus from dual socket with HT",
+			topoDualSocketHT,
+			cpuset.NewCPUSet(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11),
+			6,
+			"",
+			cpuset.NewCPUSet(0, 2, 4, 6, 8, 10),
+		},
+	}
+
+	defer featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.CPUManagerUncoreCacheAlign, true)()
+	for _, tc := range testCases {
+		// Apply t.Run() test pattern
+		t.Run(tc.description, func(t *testing.T) {
+			result, err := takeByTopologyNUMAPacked(tc.topo, tc.availableCPUs, tc.numCPUs)
+			if tc.expErr != "" && err.Error() != tc.expErr {
+				t.Errorf("expected error to be [%v] but it was [%v] in test \"%s\"", tc.expErr, err, tc.description)
+			}
+			if !result.Equals(tc.expResult) {
+				t.Errorf("expected result [%s] to equal [%s] in test \"%s\"", result, tc.expResult, tc.description)
+			}
+		})
+	}
+}
+
+var (
+	topoDualUncoreCacheSingleSocketHT = &topology.CPUTopology{
+		NumCPUs:         16,
+		NumSockets:      1,
+		NumCores:        8,
+		NumUnCoreCaches: 2,
+		CPUDetails: map[int]topology.CPUInfo{
+			0:  {CoreID: 0, SocketID: 0, UnCoreCacheID: 0},
+			1:  {CoreID: 0, SocketID: 0, UnCoreCacheID: 0},
+			2:  {CoreID: 1, SocketID: 0, UnCoreCacheID: 0},
+			3:  {CoreID: 1, SocketID: 0, UnCoreCacheID: 0},
+			4:  {CoreID: 2, SocketID: 0, UnCoreCacheID: 0},
+			5:  {CoreID: 2, SocketID: 0, UnCoreCacheID: 0},
+			6:  {CoreID: 3, SocketID: 0, UnCoreCacheID: 0},
+			7:  {CoreID: 3, SocketID: 0, UnCoreCacheID: 0},
+			8:  {CoreID: 4, SocketID: 0, UnCoreCacheID: 1},
+			9:  {CoreID: 4, SocketID: 0, UnCoreCacheID: 1},
+			10: {CoreID: 5, SocketID: 0, UnCoreCacheID: 1},
+			11: {CoreID: 5, SocketID: 0, UnCoreCacheID: 1},
+			12: {CoreID: 6, SocketID: 0, UnCoreCacheID: 1},
+			13: {CoreID: 6, SocketID: 0, UnCoreCacheID: 1},
+			14: {CoreID: 7, SocketID: 0, UnCoreCacheID: 1},
+			15: {CoreID: 7, SocketID: 0, UnCoreCacheID: 1},
+		},
+	}
+	// FIXME comment from jfbai: topoDualUncoreCacheSingleSocketHT = &topology.CPUTopology{ NumCPUs: 12, NumSockets: 2, NumCores: 6, NumUnCoreCaches: 4, CPUDetails: map[int]topology.CPUInfo{ 0: {CoreID: 0, SocketID: 0, UnCoreCacheID: 0}, 1: {CoreID: 0, SocketID: 0, UnCoreCacheID: 0}, 2: {CoreID: 1, SocketID: 0, UnCoreCacheID: 0}, 3: {CoreID: 1, SocketID: 0, UnCoreCacheID: 0}, 4: {CoreID: 2, SocketID: 0, UnCoreCacheID: 1}, 5: {CoreID: 2, SocketID: 0, UnCoreCacheID: 1}, 6: {CoreID: 3, SocketID: 1, UnCoreCacheID: 8}, 7: {CoreID: 3, SocketID: 1, UnCoreCacheID: 8}, 8: {CoreID: 4, SocketID: 1, UnCoreCacheID: 8}, 9: {CoreID: 4, SocketID: 1, UnCoreCacheID: 8}, 10: {CoreID: 5, SocketID: 1, UnCoreCacheID: 9}, 11: {CoreID: 5, SocketID: 1, UnCoreCacheID: 9}, }, }
+)
+
+func TestCPUAccumulatorFreeUncoreCache(t *testing.T) {
+	testCases := []struct {
+		description   string
+		topo          *topology.CPUTopology
+		availableCPUs cpuset.CPUSet
+		expect        []int
+	}{
+		{
+			"dual UncoreCache groups, 1 uncore cache free, cache id and cpu numbers (0:7, 1:8)",
+			topoDualUncoreCacheSingleSocketHT,
+			cpuset.NewCPUSet(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15),
+			[]int{1},
+		},
+		{
+			"dual UncoreCache groups, 2 uncore cache free, cache id and cpu numbers (0:8, 1:8)",
+			topoDualUncoreCacheSingleSocketHT,
+			cpuset.NewCPUSet(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15),
+			[]int{0, 1},
+		},
+		{
+			"dual UncoreCache groups, 1 uncore cache free, cache id and cpu numbers (0:8, 1:7)",
+			topoDualUncoreCacheSingleSocketHT,
+			cpuset.NewCPUSet(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14),
+			[]int{0},
+		},
+		{
+			"dual UncoreCache groups, 0 uncore cache free, cache id and cpu numbers (0:7, 1:7)",
+			topoDualUncoreCacheSingleSocketHT,
+			cpuset.NewCPUSet(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14),
+			[]int{},
+		},
+	}
+	for _, tc := range testCases {
+		// Apply t.Run() test pattern
+		t.Run(tc.description, func(t *testing.T) {
+			acc := newCPUAccumulator(tc.topo, tc.availableCPUs, 0)
+			result := acc.freeUncoreCaches()
+			if !reflect.DeepEqual(result, tc.expect) {
+				t.Errorf("[%s] expected %v to equal %v", tc.description, result, tc.expect)
+			}
+		})
+	}
 }
