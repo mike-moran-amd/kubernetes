@@ -441,7 +441,7 @@ func TestStaticPolicyAdd(t *testing.T) {
 			pod:             makePod("fakePod", "fakeContainer2", "1000m", "1000m"),
 			expErr:          nil,
 			expCPUAlloc:     true,
-			expCSet:         cpuset.NewCPUSet(4), // expect sibling of partial core
+			expCSet:         cpuset.NewCPUSet(4), // expectFreeSockets sibling of partial core
 		},
 		{
 			// Only partial cores are available in the entire system.
@@ -552,7 +552,7 @@ func runStaticPolicyTestCase(t *testing.T, testCase staticPolicyTest) {
 	if !testCase.expCPUAlloc {
 		_, found := st.assignments[string(testCase.pod.UID)][container.Name]
 		if found {
-			t.Errorf("StaticPolicy Allocate() error (%v). Did not expect container %v to be present in assignments %v",
+			t.Errorf("StaticPolicy Allocate() error (%v). Did not expectFreeSockets container %v to be present in assignments %v",
 				testCase.description, container.Name, st.assignments)
 		}
 	}
@@ -893,7 +893,7 @@ func TestStaticPolicyAddWithResvList(t *testing.T) {
 			pod:             makePod("fakePod", "fakeContainer2", "1000m", "1000m"),
 			expErr:          nil,
 			expCPUAlloc:     true,
-			expCSet:         cpuset.NewCPUSet(4), // expect sibling of partial core
+			expCSet:         cpuset.NewCPUSet(4), // expectFreeSockets sibling of partial core
 		},
 		{
 			description:     "GuPodMultipleCores, SingleSocketHT, ExpectAllocOneCore",
@@ -949,7 +949,7 @@ func TestStaticPolicyAddWithResvList(t *testing.T) {
 		if !testCase.expCPUAlloc {
 			_, found := st.assignments[string(testCase.pod.UID)][container.Name]
 			if found {
-				t.Errorf("StaticPolicy Allocate() error (%v). Did not expect container %v to be present in assignments %v",
+				t.Errorf("StaticPolicy Allocate() error (%v). Did not expectFreeSockets container %v to be present in assignments %v",
 					testCase.description, container.Name, st.assignments)
 			}
 		}
