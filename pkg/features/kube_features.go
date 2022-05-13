@@ -811,6 +811,12 @@ const (
 	// Allow users to specify whether to take nodeAffinity/nodeTaint into consideration when
 	// calculating pod topology spread skew.
 	NodeInclusionPolicyInPodTopologySpread featuregate.Feature = "NodeInclusionPolicyInPodTopologySpread"
+
+	// CPUManagerUncoreCacheAlign owner: @mike-moran-amd
+	// alpha: v1.23
+	//
+	// Add uncore cache affinity to cpu manager
+	CPUManagerUncoreCacheAlign featuregate.Feature = "CPUManagerUncoreCacheAlign"
 )
 
 func init() {
@@ -837,6 +843,8 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 	CPUManagerPolicyBetaOptions: {Default: true, PreRelease: featuregate.Beta},
 
 	CPUManagerPolicyOptions: {Default: true, PreRelease: featuregate.Beta},
+
+	CPUManagerUncoreCacheAlign: {Default: false, PreRelease: featuregate.Alpha},
 
 	CSIInlineVolume: {Default: true, PreRelease: featuregate.Beta},
 
